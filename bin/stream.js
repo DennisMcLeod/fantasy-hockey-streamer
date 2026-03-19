@@ -13,6 +13,8 @@ if (subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
   process.exit(0);
 }
 
+const SUBCOMMANDS = new Set(['setup', 'auth', 'leagues', 'status', 'help']);
+
 if (subcommand === 'setup') {
   const { runSetup } = require('../lib/setup');
   runSetup().catch(err => { console.error('Setup error:', err.message); process.exit(1); });
@@ -23,8 +25,11 @@ if (subcommand === 'setup') {
   runLeagues().catch(err => { console.error('Error:', err.message); process.exit(1); });
 } else if (subcommand === 'status') {
   runStatus();
+} else if (subcommand && !subcommand.startsWith('-') && !subcommand.match(/^\d+\.l\.\d+$/) && !SUBCOMMANDS.has(subcommand)) {
+  console.error(`Unknown command: ${subcommand}\nRun "stream help" for usage.`);
+  process.exit(1);
 } else {
-  // Default: run the streamer
+  // Default: run the streamer (no subcommand, or a league key, or flags)
   runStream().catch(err => { console.error('Error:', err.message); process.exit(1); });
 }
 
@@ -35,7 +40,7 @@ async function runStream() {
   if (!hasConfig()) {
     console.log('No configuration found. Starting first-run setup...\n');
     const { runSetup } = require('../lib/setup');
-    const result = await runSetup();
+    await runSetup();
     // After setup, run the streamer immediately
     console.log('\n━━━ Running streaming analysis ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   }
