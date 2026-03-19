@@ -13,6 +13,7 @@ Supports H2H Categories (including banger leagues with HIT/BLK), H2H Points, mul
 - **Multi-wave streaming** — suggests optimal add/drop timing (2-3 waves) to maximize games across the week
 - **Projected adds** — simulate "what if I add Player X on Tuesday?" before committing
 - **Drop candidates** — identifies lowest-value roster players as drop targets
+- **League-agnostic scoring** — auto-detects your league's stat categories and point values
 
 ## Prerequisites
 
@@ -21,25 +22,16 @@ Supports H2H Categories (including banger leagues with HIT/BLK), H2H Points, mul
 
 ## Install
 
-### npx (no install needed)
-
 ```bash
-npx fantasy-hockey-streamer
-```
-
-### Global install
-
-```bash
-npm install -g fantasy-hockey-streamer
-```
-
-### From source
-
-```bash
-git clone https://github.com/your-username/fantasy-hockey-streamer.git
+git clone https://github.com/DennisMcLeod/fantasy-hockey-streamer.git
 cd fantasy-hockey-streamer
 npm install
-npm link   # makes 'stream' available globally
+```
+
+Optionally, make `stream` available as a global command:
+
+```bash
+npm link
 ```
 
 ## Setup (~2 minutes)
@@ -47,6 +39,8 @@ npm link   # makes 'stream' available globally
 On first run, the setup wizard walks you through everything:
 
 ```bash
+node bin/stream.js
+# or if you ran npm link:
 stream
 ```
 
@@ -81,9 +75,6 @@ stream --week 21
 # Week containing a date
 stream --date 2026-03-23
 
-# Already used 2 adds this week
-stream --adds-used 2
-
 # Include goalie streaming slots
 stream --goalies
 
@@ -92,6 +83,15 @@ stream --add "Schneider"
 
 # Simulate adding a player starting Tuesday
 stream --add "Schneider:Tue"
+
+# Skip matchup-based adjustments (pure schedule + quality ranking)
+stream --no-matchup
+
+# Manually boost specific categories (2.5x)
+stream --boost "HIT,BLK"
+
+# Override auto-detected adds used this week
+stream --adds-used 2
 
 # Combine flags
 stream --next --add "Schneider:Tue" --add "Benoit" --goalies
@@ -144,11 +144,20 @@ export YAHOO_LEAGUE_KEY=465.l.26962
 
 1. Fetches your roster and league settings from Yahoo Fantasy API
 2. Pulls the NHL weekly schedule from `api-web.nhle.com`
-3. Simulates daily roster slot assignments using a greedy algorithm (most constrained positions first)
-4. Fetches top free agents by position, enriched with last-30-day stats
-5. Scores each free agent based on: empty slot fills, off-night coverage, schedule density, and player quality
-6. Builds multi-wave streaming plans that maximize total games gained
-7. For H2H Categories leagues: adjusts streamer weights based on which categories you're currently losing
+3. Builds stat weights from your league's settings (point values for points leagues, default weights for categories leagues)
+4. Simulates daily roster slot assignments using a greedy algorithm (most constrained positions first)
+5. Fetches top free agents by position, enriched with last-30-day stats
+6. Scores each free agent based on: empty slot fills, off-night coverage, schedule density, and player quality
+7. Builds multi-wave streaming plans that maximize total games gained
+8. For H2H Categories leagues: adjusts streamer weights based on which categories you're currently losing
+
+## Tests
+
+```bash
+npm test
+```
+
+83 tests covering arg parsing, date helpers, league weight extraction, player quality scoring, slot assignment, streamer ranking, and streaming plan generation. Uses Node's built-in test runner (zero dependencies).
 
 ## License
 
