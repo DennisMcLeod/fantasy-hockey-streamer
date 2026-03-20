@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { hasConfig, resolveCredentials, TOKEN_FILE, CERTS_DIR, CONFIG_DIR, loadConfig } = require('../lib/config');
+const { hasConfig, resolveCredentials, resolveLeague, TOKEN_FILE, CERTS_DIR, CONFIG_DIR, loadConfig, saveConfig } = require('../lib/config');
 const fs = require('fs');
 
 const args = process.argv.slice(2);
@@ -13,8 +13,6 @@ if (subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
   process.exit(0);
 }
 
-const SUBCOMMANDS = new Set(['setup', 'auth', 'leagues', 'status', 'help']);
-
 if (subcommand === 'setup') {
   const { runSetup } = require('../lib/setup');
   runSetup().catch(err => { console.error('Setup error:', err.message); process.exit(1); });
@@ -25,11 +23,8 @@ if (subcommand === 'setup') {
   runLeagues().catch(err => { console.error('Error:', err.message); process.exit(1); });
 } else if (subcommand === 'status') {
   runStatus();
-} else if (subcommand && !subcommand.startsWith('-') && !subcommand.match(/^\d+\.l\.\d+$/) && !SUBCOMMANDS.has(subcommand)) {
-  console.error(`Unknown command: ${subcommand}\nRun "stream help" for usage.`);
-  process.exit(1);
 } else {
-  // Default: run the streamer (no subcommand, or a league key, or flags)
+  // Default: run the streamer (no subcommand, league key, alias, or flags)
   runStream().catch(err => { console.error('Error:', err.message); process.exit(1); });
 }
 
@@ -64,12 +59,33 @@ async function runStream() {
 }
 
 async function runLeagues() {
+  const refresh = args.includes('--refresh');
   const creds = resolveCredentials();
   if (!creds.clientId || !creds.clientSecret) {
     console.error('Missing Yahoo credentials. Run: stream setup');
     process.exit(1);
   }
 
+  const config = loadConfig() || {};
+  const existingAliases = config.leagues || {};
+
+  // If we have aliases and not refreshing, just show them
+  if (!refresh && Object.keys(existingAliases).length > 0) {
+    console.log('Your NHL fantasy leagues:\n');
+    const reverseMap = {};
+    for (const [alias, key] of Object.entries(existingAliases)) {
+      reverseMap[key] = alias;
+    }
+    for (const [alias, key] of Object.entries(existingAliases)) {
+      const isDefault = key === config.defaultLeague ? ' ← default' : '';
+      console.log(`  ${alias.padEnd(15)} ${key}${isDefault}`);
+    }
+    console.log(`\nUsage: stream ${Object.keys(existingAliases)[0]}`);
+    console.log('Run "stream leagues --refresh" to update from Yahoo.\n');
+    return;
+  }
+
+  // Fetch from API
   const { YahooAuth } = require('../lib/yahoo-auth');
   const { YahooClient } = require('../lib/yahoo-client');
 
@@ -94,13 +110,27 @@ async function runLeagues() {
     return;
   }
 
-  const config = loadConfig() || {};
+  // Generate aliases
+  const { generateAlias } = require('../lib/setup');
+  const usedAliases = new Set();
+  const leagueAliases = {};
   for (const lg of leagues) {
+    const alias = generateAlias(lg.name, usedAliases);
+    usedAliases.add(alias);
+    leagueAliases[alias] = lg.leagueKey;
+  }
+
+  // Save updated aliases
+  saveConfig({ ...config, leagues: leagueAliases });
+
+  for (const lg of leagues) {
+    const alias = Object.entries(leagueAliases).find(([, k]) => k === lg.leagueKey)?.[0];
     const scoring = lg.scoringType === 'headpoint' ? 'Points' : 'Categories';
     const isDefault = lg.leagueKey === config.defaultLeague ? ' ← default' : '';
-    console.log(`  ${lg.name}`);
-    console.log(`    Key: ${lg.leagueKey} | ${lg.numTeams} teams | H2H ${scoring}${isDefault}\n`);
+    console.log(`  ${lg.name} (${lg.numTeams} teams, ${scoring})${isDefault}`);
+    console.log(`    alias: ${alias}  key: ${lg.leagueKey}\n`);
   }
+  console.log(`Usage: stream ${Object.keys(leagueAliases)[0]}`);
 }
 
 function runStatus() {
@@ -140,7 +170,8 @@ Fantasy Hockey Streamer — find the best free agent pickups
 
 Usage:
   stream                          Analyze current week (default league)
-  stream <league_key>             Analyze specific league
+  stream <alias>                  Analyze by league alias (e.g. dads, kkupfl)
+  stream <league_key>             Analyze by league key (e.g. 465.l.26962)
   stream --next                   Analyze next week
   stream --week <num>             Analyze specific fantasy week
   stream --date <YYYY-MM-DD>      Analyze week containing date
@@ -149,19 +180,21 @@ Usage:
   stream --add "<Name>"           Simulate adding a player
   stream --add "<Name>:<Day>"     Simulate adding starting on a day
   stream --no-matchup             Skip matchup adjustment (raw league weights)
-  stream --boost "HIT,BLK"       Manually boost specific categories (2.5x)
+  stream --boost "HIT,BLK"        Manually boost specific categories (2.5x)
 
 Subcommands:
   stream setup                    Run setup wizard
   stream auth                     Re-authenticate with Yahoo
-  stream leagues                  List your NHL fantasy leagues
+  stream leagues                  List leagues and aliases
+  stream leagues --refresh        Re-fetch leagues from Yahoo and update aliases
   stream status                   Show config and token status
   stream help                     Show this help
 
 Examples:
   stream                          Current week, default league
-  stream 465.l.26962              Specific league
-  stream --next --add "Schneider:Tue"
-  stream --adds-used 2 --goalies
+  stream kkupfl                   Use league alias
+  stream dads --next              Next week for a specific league
+  stream --boost "HIT,BLK"        Boost specific categories
+  stream --add "Schneider:Tue" --goalies
 `);
 }

@@ -23,9 +23,15 @@ describe('parseArgs', () => {
     assert.equal(result.leagueKey, '465.l.26962');
   });
 
-  it('rejects non-.l. league key patterns', () => {
+  it('treats non-.l. patterns as aliases', () => {
     const result = parse('465.x.26962');
-    assert.equal(result.leagueKey, null);
+    // Not a valid league key, but treated as an alias for resolveLeague
+    assert.equal(result.leagueKey, '465.x.26962');
+  });
+
+  it('treats plain words as league aliases', () => {
+    const result = parse('dads');
+    assert.equal(result.leagueKey, 'dads');
   });
 
   it('parses --next', () => {
